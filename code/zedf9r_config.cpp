@@ -53,21 +53,18 @@ int main()
         // Send configuration commands
         sendUBX(serial, CFG_RATE_5HZ);
         sendUBX(serial, CFG_NAV5_RTK);
-        sendUBX(serial, CFG_MSG_UBX_NAV_PVT);
-        //sendUBX(serial, CFG_MSG_NMEA_GGA);
+        //sendUBX(serial, CFG_MSG_UBX_NAV_PVT);
+        sendUBX(serial, CFG_MSG_NMEA_GGA);
 
         std::cout << "Configuration done. Reading GNSS data..." << std::endl;
 
-        while (true) {
-            if (serial.IsDataAvailable()) {
-                std::string data;
-                serial.ReadLine(data, '\n', 1024);
-                std::ofstream log("gnss_log.txt");
-                log << data;
+        std::ofstream log("gnss_log.txt");
 
-                for (char c : data) 
-                    printf("%02X ", static_cast<uint8_t>(c));
-                std::cout << std::endl;
+        while (true) {
+            std::string data;
+            serial.Read(data, 1);
+            if (!data.empty()) {       
+                log << data;
             }
             usleep(delay); 
         }
