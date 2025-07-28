@@ -1,5 +1,4 @@
 #include <iostream>
-#include <cstring>
 #include <vector>
 
 #include <libserial/SerialPort.h>
@@ -26,6 +25,10 @@ const std::vector<uint8_t> CFG_MSG_UBX_NAV_PVT = {
     0xB5, 0x62, 0x06, 0x01, 0x08, 0x00, 0x01, 0x07, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x18, 0xE1  // Enable NAV-PVT messages
 };
 
+const std::vector<uint8_t> CFG_MSG_NMEA_GGA = {
+    0xB5, 0x62, 0x06, 0x01, 0x08, 0x00, 0xF0, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0x23  // Enable GGA messages
+};
+
 void sendUBX(SerialPort& port, const std::vector<uint8_t>& msg) 
 {
     port.Write(msg);
@@ -49,7 +52,8 @@ int main()
         // Send configuration commands
         sendUBX(serial, CFG_RATE_5HZ);
         sendUBX(serial, CFG_NAV5_RTK);
-        sendUBX(serial, CFG_MSG_UBX_NAV_PVT);
+        //sendUBX(serial, CFG_MSG_UBX_NAV_PVT);
+        sendUBX(serial, CFG_MSG_NMEA_GGA);
 
         std::cout << "Configuration done. Reading GNSS data..." << std::endl;
 
@@ -57,7 +61,11 @@ int main()
             if (serial.IsDataAvailable()) {
                 std::string data;
                 serial.ReadLine(data, '\n', 1024);
-                std::cout << data << std::endl;
+                std::ofstream log("gnss_log.txt");
+                log << data;
+                for (char c : data)
+                    std::cout << c; 
+                std::cout << std::endl;
             }
             usleep(delay); 
         }
