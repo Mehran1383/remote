@@ -59,7 +59,7 @@ int main()
                 serial.ReadLine(data, '\n', 1024);
                 std::cout << data << std::endl;
             }
-            usleep(DELAY); 
+            usleep(delay); 
         }
     } catch (const OpenFailed&) {
         std::cerr << "Failed to open serial port!" << std::endl;
