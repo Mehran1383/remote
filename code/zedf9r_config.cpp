@@ -9,7 +9,7 @@
 
 using namespace LibSerial;
 
-const uint8_t delay = 10e5;
+const double delay = 10e5;
 
 // UBX Configuration Commands
 const std::vector<uint8_t> CFG_RATE_5HZ = {
