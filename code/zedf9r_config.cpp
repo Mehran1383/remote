@@ -1,5 +1,6 @@
 #include <iostream>
 #include <vector>
+#include <fstream>
 
 #include <libserial/SerialPort.h>
 #include <unistd.h>
