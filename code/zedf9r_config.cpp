@@ -5,7 +5,7 @@
 #include <libserial/SerialPort.h>
 #include <unistd.h>
 
-#define PORT "/dev/ACM0"
+#define PORT "/dev/ttyACM0"
 
 using namespace LibSerial;
 
