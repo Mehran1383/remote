@@ -4,7 +4,7 @@
 #include <mqtt/client.h>
 #include <SerialStream.h>
 
-#define ADDRESS     "ssl://pp.services.u-blox.com:8883"
+#define ADDRESS     "ppntrip.services.u-blox.com"
 #define CLIENTID    "YourDeviceID"
 #define TOPIC       "/pp/your-topic/spartn" // Your specific topic from u-blox
 #define QOS         1
@@ -46,7 +46,7 @@ int main() {
         connOpts.set_password("pp-password-or-token");
 
         client.connect(connOpts);
-        client.subscribe(TOPIC, QOS);
+        //client.subscribe(TOPIC, QOS);
 
         cout << "Connected to MQTT and subscribed to PointPerfect" << endl;
 
