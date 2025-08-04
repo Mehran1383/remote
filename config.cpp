@@ -61,9 +61,9 @@ bool sendUBXMessage(int fd, uint8_t cls, uint8_t id, const std::vector<uint8_t>&
     return written == static_cast<ssize_t>(message.size());
 }
 
-bool readUBXRxmRTCM(int fd) {
+bool readUBXRxmCOR(int fd) {
     const int HEADER_SIZE = 6;
-    const int PAYLOAD_SIZE = 8;
+    const int PAYLOAD_SIZE = 16;  // UBX-RXM-COR has a fixed payload of 16 bytes
     const int TOTAL_SIZE = HEADER_SIZE + PAYLOAD_SIZE + 2;
 
     uint8_t buffer[TOTAL_SIZE];
@@ -78,11 +78,11 @@ bool readUBXRxmRTCM(int fd) {
             if (totalRead >= HEADER_SIZE &&
                 buffer[0] == UBX_SYNC_CHAR1 &&
                 buffer[1] == UBX_SYNC_CHAR2 &&
-                buffer[2] == 0x02 && buffer[3] == 0x32) {
+                buffer[2] == 0x02 && buffer[3] == 0x34) {
 
                 uint16_t len = buffer[4] | (buffer[5] << 8);
                 if (len != PAYLOAD_SIZE) {
-                    std::cerr << "Unexpected UBX-RXM-RTCM payload length: " << len << std::endl;
+                    std::cerr << "Unexpected UBX-RXM-COR payload length: " << len << std::endl;
                     return false;
                 }
 
@@ -91,25 +91,37 @@ bool readUBXRxmRTCM(int fd) {
                     if (r > 0) totalRead += r;
                 }
 
-                // Payload parsing:
-                uint32_t received = buffer[6] | (buffer[7] << 8) | (buffer[8] << 16) | (buffer[9] << 24);
-                uint32_t passed   = buffer[10] | (buffer[11] << 8) | (buffer[12] << 16) | (buffer[13] << 24);
+                const uint8_t* payload = buffer + HEADER_SIZE;
 
-                std::cout << "RTCM Messages Received: " << received << std::endl;
-                std::cout << "RTCM Messages Passed Parser: " << passed << std::endl;
+                uint8_t version = payload[0];
+                uint8_t type = payload[1]; // 0=none, 1=RTCM, 2=SPARTN, etc.
+                uint8_t status = payload[2]; // flags: bits 0=used, 1=corrections available
+                uint8_t reserved1 = payload[3];
+                uint32_t lastBytes = payload[4] | (payload[5] << 8) | (payload[6] << 16) | (payload[7] << 24);
+                uint32_t totalBytes = payload[8] | (payload[9] << 8) | (payload[10] << 16) | (payload[11] << 24);
+                uint32_t age = payload[12] | (payload[13] << 8) | (payload[14] << 16) | (payload[15] << 24);
 
-                if (passed > 0) {
-                    std::cout << "✅ RTCM Corrections are reaching and being parsed by the receiver." << std::endl;
-                } else {
-                    std::cout << "❌ RTCM Corrections NOT being parsed yet." << std::endl;
+                std::cout << "Correction Type: ";
+                switch (type) {
+                    case 1: std::cout << "RTCM"; break;
+                    case 2: std::cout << "SPARTN"; break;
+                    case 3: std::cout << "CLAS"; break;
+                    default: std::cout << "Unknown"; break;
                 }
+                std::cout << std::endl;
+
+                std::cout << "Corrections Used: " << ((status & 0x01) ? "YES" : "NO") << std::endl;
+                std::cout << "Corrections Available: " << ((status & 0x02) ? "YES" : "NO") << std::endl;
+                std::cout << "Bytes received in last epoch: " << lastBytes << std::endl;
+                std::cout << "Total bytes received: " << totalBytes << std::endl;
+                std::cout << "Age of corrections (ms): " << age << std::endl;
 
                 return true;
             }
         }
     }
 
-    std::cerr << "⚠️  UBX-RXM-RTCM response not received." << std::endl;
+    std::cerr << "⚠️  UBX-RXM-COR response not received." << std::endl;
     return false;
 }
 
@@ -118,13 +130,13 @@ int main() {
     int fd = openSerialPort(port);
     if (fd < 0) return 1;
 
-    std::cout << "📤 Polling UBX-RXM-RTCM for RTCM stats..." << std::endl;
-    if (!sendUBXMessage(fd, 0x02, 0x32, {})) {
-        std::cerr << "Failed to send UBX-RXM-RTCM." << std::endl;
+    std::cout << "📤 Polling UBX-RXM-COR for correction status..." << std::endl;
+    if (!sendUBXMessage(fd, 0x02, 0x34, {})) {
+        std::cerr << "Failed to send UBX-RXM-COR." << std::endl;
         return 1;
     }
 
-    readUBXRxmRTCM(fd);
+    readUBXRxmCOR(fd);
 
     close(fd);
     return 0;
