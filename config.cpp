@@ -61,16 +61,15 @@ bool sendUBXMessage(int fd, uint8_t cls, uint8_t id, const std::vector<uint8_t>&
     return written == static_cast<ssize_t>(message.size());
 }
 
-bool readUBXMonVer(int fd) {
+bool readUBXNavPVT(int fd) {
     const int HEADER_SIZE = 6;
-    const int RESPONSE_HEADER_LEN = 6;
-    const int MAX_PAYLOAD = 100;
+    const int PAYLOAD_SIZE = 92;
+    const int TOTAL_SIZE = HEADER_SIZE + PAYLOAD_SIZE + 2;
 
-    uint8_t buffer[HEADER_SIZE + MAX_PAYLOAD + 2]; // header + payload + checksum
+    uint8_t buffer[TOTAL_SIZE];
     int totalRead = 0;
 
-    // Wait and read the UBX-MON-VER message (class=0x0A, id=0x04)
-    for (int attempts = 0; attempts < 1000; ++attempts) {
+    for (int attempts = 0; attempts < 2000; ++attempts) {
         usleep(1000);
         int r = read(fd, &buffer[totalRead], 1);
         if (r > 0) {
@@ -79,28 +78,40 @@ bool readUBXMonVer(int fd) {
             if (totalRead >= 6 &&
                 buffer[0] == UBX_SYNC_CHAR1 &&
                 buffer[1] == UBX_SYNC_CHAR2 &&
-                buffer[2] == 0x0A && buffer[3] == 0x04) {
-                uint16_t len = buffer[4] | (buffer[5] << 8);
+                buffer[2] == 0x01 && buffer[3] == 0x07) {
 
-                while (totalRead < 6 + len + 2) {
+                uint16_t len = buffer[4] | (buffer[5] << 8);
+                if (len != PAYLOAD_SIZE) {
+                    std::cerr << "Unexpected UBX-NAV-PVT payload length: " << len << std::endl;
+                    return false;
+                }
+
+                while (totalRead < TOTAL_SIZE) {
                     r = read(fd, &buffer[totalRead], 1);
                     if (r > 0) totalRead += r;
                 }
 
-                // Extract version strings
-                const uint8_t* payload = buffer + 6;
+                // Parse fixType and flags
+                uint8_t fixType = buffer[6 + 20];
+                uint8_t flags = buffer[6 + 21];
 
-                std::string swVersion(reinterpret_cast<const char*>(payload), 30);
-                std::string hwVersion(reinterpret_cast<const char*>(payload + 30), 30);
+                std::cout << "Fix Type: " << (int)fixType << " ";
 
-                std::cout << "🟢 Software Version: " << swVersion.c_str() << std::endl;
-                std::cout << "🟢 Hardware Version: " << hwVersion.c_str() << std::endl;
+                switch (fixType) {
+                    case 0: std::cout << "(No Fix)"; break;
+                    case 1: std::cout << "(Dead Reckoning)"; break;
+                    case 2: std::cout << "(2D-Fix)"; break;
+                    case 3: std::cout << "(3D-Fix)"; break;
+                    case 4: std::cout << "(GNSS + Dead Reckoning)"; break;
+                    case 5: std::cout << "(Time Only Fix)"; break;
+                    default: std::cout << "(Unknown)"; break;
+                }
+                std::cout << std::endl;
 
-                // Optional extensions (up to N additional 30-byte strings)
-                int extCount = (len - 60) / 30;
-                for (int i = 0; i < extCount; ++i) {
-                    std::string ext(reinterpret_cast<const char*>(payload + 60 + i * 30), 30);
-                    std::cout << "🔧 Extension[" << i << "]: " << ext.c_str() << std::endl;
+                if (flags & (1 << 3)) {
+                    std::cout << "✅ Differential Corrections Applied" << std::endl;
+                } else {
+                    std::cout << "❌ No Differential Corrections Applied" << std::endl;
                 }
 
                 return true;
@@ -108,24 +119,22 @@ bool readUBXMonVer(int fd) {
         }
     }
 
-    std::cerr << "⚠️  UBX-MON-VER response not received." << std::endl;
+    std::cerr << "⚠️  UBX-NAV-PVT response not received." << std::endl;
     return false;
 }
 
 int main() {
-    const char* port = "/dev/ttyACM0"; // Adjust this if needed
+    const char* port = "/dev/ttyACM0"; // Adjust if needed
     int fd = openSerialPort(port);
     if (fd < 0) return 1;
 
-    std::cout << "📤 Sending UBX-MON-VER poll..." << std::endl;
-    if (!sendUBXMessage(fd, 0x0A, 0x04, {})) {
-        std::cerr << "Failed to send UBX-MON-VER." << std::endl;
+    std::cout << "📤 Polling UBX-NAV-PVT for RTK status..." << std::endl;
+    if (!sendUBXMessage(fd, 0x01, 0x07, {})) {
+        std::cerr << "Failed to send UBX-NAV-PVT." << std::endl;
         return 1;
     }
 
-    std::cout << "📥 Waiting for UBX-MON-VER response..." << std::endl;
-    readUBXMonVer(fd);
-
+    readUBXNavPVT(fd);
     close(fd);
     return 0;
 }
