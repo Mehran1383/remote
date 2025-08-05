@@ -8,6 +8,12 @@
 #define UBX_SYNC_CHAR1 0xB5
 #define UBX_SYNC_CHAR2 0x62
 
+// Function definitions (as before)
+int openSerialPort(const char* device);
+void calculateChecksum(const std::vector<uint8_t>& payload, uint8_t& ckA, uint8_t& ckB);
+bool sendUBXMessage(int fd, uint8_t cls, uint8_t id, const std::vector<uint8_t>& payload);
+
+// Open serial port (same as before)
 int openSerialPort(const char* device) {
     int fd = open(device, O_RDWR | O_NOCTTY | O_NDELAY);
     if (fd == -1) {
@@ -61,82 +67,37 @@ bool sendUBXMessage(int fd, uint8_t cls, uint8_t id, const std::vector<uint8_t>&
     return written == static_cast<ssize_t>(message.size());
 }
 
-bool readUBXRxmCOR(int fd) {
-    const int HEADER_SIZE = 6;
-    const int PAYLOAD_SIZE = 16;  // UBX-RXM-COR has a fixed payload of 16 bytes
-    const int TOTAL_SIZE = HEADER_SIZE + PAYLOAD_SIZE + 2;
-
-    uint8_t buffer[TOTAL_SIZE];
-    int totalRead = 0;
-
-    for (int attempts = 0; attempts < 2000; ++attempts) {
-        usleep(1000);
-        int r = read(fd, &buffer[totalRead], 1);
-        if (r > 0) {
-            totalRead += r;
-
-            if (totalRead >= HEADER_SIZE &&
-                buffer[0] == UBX_SYNC_CHAR1 &&
-                buffer[1] == UBX_SYNC_CHAR2 &&
-                buffer[2] == 0x02 && buffer[3] == 0x34) {
-
-                uint16_t len = buffer[4] | (buffer[5] << 8);
-                if (len != PAYLOAD_SIZE) {
-                    std::cerr << "Unexpected UBX-RXM-COR payload length: " << len << std::endl;
-                    return false;
-                }
-
-                while (totalRead < TOTAL_SIZE) {
-                    r = read(fd, &buffer[totalRead], 1);
-                    if (r > 0) totalRead += r;
-                }
-
-                const uint8_t* payload = buffer + HEADER_SIZE;
-
-                uint8_t version = payload[0];
-                uint8_t type = payload[1]; // 0=none, 1=RTCM, 2=SPARTN, etc.
-                uint8_t status = payload[2]; // flags: bits 0=used, 1=corrections available
-                uint8_t reserved1 = payload[3];
-                uint32_t lastBytes = payload[4] | (payload[5] << 8) | (payload[6] << 16) | (payload[7] << 24);
-                uint32_t totalBytes = payload[8] | (payload[9] << 8) | (payload[10] << 16) | (payload[11] << 24);
-                uint32_t age = payload[12] | (payload[13] << 8) | (payload[14] << 16) | (payload[15] << 24);
-
-                std::cout << "Correction Type: ";
-                switch (type) {
-                    case 1: std::cout << "RTCM"; break;
-                    case 2: std::cout << "SPARTN"; break;
-                    case 3: std::cout << "CLAS"; break;
-                    default: std::cout << "Unknown"; break;
-                }
-                std::cout << std::endl;
-
-                std::cout << "Corrections Used: " << ((status & 0x01) ? "YES" : "NO") << std::endl;
-                std::cout << "Corrections Available: " << ((status & 0x02) ? "YES" : "NO") << std::endl;
-                std::cout << "Bytes received in last epoch: " << lastBytes << std::endl;
-                std::cout << "Total bytes received: " << totalBytes << std::endl;
-                std::cout << "Age of corrections (ms): " << age << std::endl;
-
-                return true;
-            }
-        }
-    }
-
-    std::cerr << "⚠️  UBX-RXM-COR response not received." << std::endl;
-    return false;
-}
-
 int main() {
     const char* port = "/dev/ttyACM0"; // Adjust this if needed
     int fd = openSerialPort(port);
     if (fd < 0) return 1;
 
-    std::cout << "📤 Polling UBX-RXM-COR for correction status..." << std::endl;
-    if (!sendUBXMessage(fd, 0x02, 0x34, {})) {
-        std::cerr << "Failed to send UBX-RXM-COR." << std::endl;
-        return 1;
-    }
+    std::vector<uint8_t> payload;
 
-    readUBXRxmCOR(fd);
+    // UBX-CFG-VALSET Header
+    payload.push_back(0x00); // Version
+    payload.push_back(0x00); // Layer (0: RAM only)
+    payload.push_back(0x00); // Reserved
+    payload.push_back(0x00); // Reserved
+
+    // CFG-MSGOUT-NMEA_GGA_USB KeyID: 0x209100BA, Value: 1 (enable)
+    payload.push_back(0xBA); payload.push_back(0x00); payload.push_back(0x91); payload.push_back(0x20);
+    payload.push_back(0x01); payload.push_back(0x00); payload.push_back(0x00); payload.push_back(0x00);
+
+    // CFG-MSGOUT-NMEA_RMC_USB KeyID: 0x209100B5, Value: 1 (enable)
+    payload.push_back(0xB5); payload.push_back(0x00); payload.push_back(0x91); payload.push_back(0x20);
+    payload.push_back(0x01); payload.push_back(0x00); payload.push_back(0x00); payload.push_back(0x00);
+
+    // If you want to enable for UART1 instead, change KeyIDs to:
+    // CFG-MSGOUT-NMEA_GGA_UART1: 0x20910001
+    // CFG-MSGOUT-NMEA_RMC_UART1: 0x20910005
+
+    std::cout << "Sending UBX-CFG-VALSET to enable GGA and RMC output..." << std::endl;
+    if (sendUBXMessage(fd, 0x06, 0x8A, payload)) {
+        std::cout << "Configuration sent successfully." << std::endl;
+    } else {
+        std::cerr << "Failed to send configuration." << std::endl;
+    }
 
     close(fd);
     return 0;
