@@ -349,7 +349,13 @@ class PointPerfectClient:
         else:
             self.stats = None
 
-        handlers = {re.compile(b"^\\$G[A-Z]GGA,"): self.handle_nmea_gga}
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        self.nmea_log_file = open(f"solution_log_{timestamp}.nmea", "w")
+
+        handlers = {
+            re.compile(b"^\\$G[A-Z]GGA,"): self.handle_nmea_gga,
+            re.compile(b"^\$G[A-Z]RMC,"): self.handle_nmea_rmc
+            }
         self.nmea_parser = NmeaParser(handlers)
 
         if self.mountpoint:
@@ -388,6 +394,7 @@ class PointPerfectClient:
                     self.nmea_parser.parse(buffer[0:bytes_read])
         finally:
             self.ntrip_client.stop_stream()
+            self.nmea_log_file.close()
 
     def handle_nmea_gga(self, sentence):
         """Process an NMEA-GGA sentence passed in as a string."""
@@ -421,6 +428,11 @@ class PointPerfectClient:
                     if self.ntrip_client.send_gga(sentence + "\r\n"):
                         logging.debug("GGA sent")
                         self.lastgga = time.time()
+
+    def handle_nmea_rmc(self, sentence):
+        logging.info(sentence)
+        self.nmea_log_file.write(sentence + '\n')
+        self.nmea_log_file.flush()
 
     def process_position(self, lat, lon):
         """Handle position from the receiver. If needed, select a new mountpoint."""
