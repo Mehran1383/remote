@@ -15,6 +15,7 @@
 #include <termios.h>
 #include <time.h>
 #include <unistd.h>
+#include <math.h>
 
 #include <algorithm>
 #include <atomic>
@@ -384,7 +385,7 @@ public:
             } else if (buffering) {
                 if ( (b >= 'A' && b <= 'Z') ||
                      (b >= '0' && b <= '9') ||
-                     b==',' || b=='.' || b=='-' || b=='*') {
+                     b == ',' || b == '.' || b == '-' || b == '*') {
                     buffer.push_back(b);
                 } else if (b == 0x0D) { // CR
                     if (buffer.size() > 3 && buffer[buffer.size() - 3] == '*') {
@@ -518,7 +519,7 @@ private:
 class PointPerfectClient {
 public:
     PointPerfectClient(PosixSerial &serial, NtripClient &ntrip, const std::string &mountpoint,
-                       int gga_interval, int distance, double epochs, std::ofstream *ubxfile, int stats_interval)
+                       int gga_interval, int distance, double epochs, std::ofstream *logfile, int stats_interval)
         : serial_(serial), ntrip_(ntrip), mountpoint_(mountpoint), gga_interval_(gga_interval),
           distance_(distance), max_epochs_(epochs), logfile_(logfile)
     {
@@ -570,22 +571,24 @@ public:
         }
     }
 
-    ~PointPerfectClient() {
+    ~PointPerfectClient() 
+    {
         ntrip_.stop_stream();
         if (nmea_log_.is_open()) 
             nmea_log_.close();
     }
 
-    void loop_forever() {
+    void loop_forever() 
+    {
         std::vector<uint8_t> buf;
         buf.reserve(2048);
         try {
             while (true) {
                 ssize_t n = serial_.read_some(buf, 1024);
                 if (n > 0) {
-                    if (ubxfile_ && ubxfile_->is_open()) {
-                        ubxfile_->write(reinterpret_cast<const char*>(buf.data()), buf.size());
-                        ubxfile_->flush();
+                    if (logfile_ && logfile_->is_open()) {
+                        logfile_->write(reinterpret_cast<const char*>(buf.data()), buf.size());
+                        logfile_->flush();
                     }
                     // send to parser
                     parser_->parse(buf);
@@ -601,12 +604,14 @@ public:
     }
 
 private:
-    void handle_ntrip_data(const std::vector<uint8_t> &data) {
+    void handle_ntrip_data(const std::vector<uint8_t> &data) 
+    {
         // forward to GNSS receiver via serial port
         serial_.write_bytes(data);
     }
 
-    void handle_nmea_rmc(const std::string &sentence) {
+    void handle_nmea_rmc(const std::string &sentence) 
+    {
         log_info(sentence);
         if (nmea_log_.is_open()) {
             nmea_log_ << sentence << "\n";
@@ -614,19 +619,21 @@ private:
         }
     }
 
-    void handle_nmea_gga(const std::string &sentence) {
+    void handle_nmea_gga(const std::string &sentence) 
+    {
         log_info(sentence);
         // split by comma
         std::vector<std::string> fields;
         std::istringstream ss(sentence);
         std::string tok;
-        while (std::getline(ss, tok, ',')) fields.push_back(tok);
+        while (std::getline(ss, tok, ',')) 
+            fields.push_back(tok);
+
         int quality = 0;
         try { if (fields.size() > 6 && !fields[6].empty()) quality = std::stoi(fields[6]); } catch(...) { quality = 0; }
         double f_lat = 0.0, f_lon = 0.0;
         if (fields.size() > 2 && !fields[2].empty()) try { f_lat = std::stod(fields[2]); } catch(...) {}
         double lat = int(f_lat/100.0) + f_lat - int(f_lat/100.0)*100.0;
-        // proper convert: deg = ddmm.mmm -> dd + mm.mmm/60
         lat = int(f_lat/100) + fmod(f_lat, 100.0)/60.0;
         if (fields.size() > 3 && fields[3] == "S") lat *= -1.0;
 
@@ -649,7 +656,7 @@ private:
             }
         }
 
-        if (quality != 0 && quality != 6) { // 0 = no fix, 6 = estimated (as in Python)
+        if (quality != 0 && quality != 6) { // 0 = no fix, 6 = estimated 
             process_position(lat, lon);
             if (gga_interval_ > 0) {
                 auto now = std::chrono::steady_clock::now();
@@ -659,7 +666,6 @@ private:
                     // send GGA (add CRLF)
                     std::string out = sentence + "\r\n";
                     if (ntrip_.send_gga(out)) {
-                        log_debug("GGA sent");
                         lastgga_time_ = now;
                     }
                 }
@@ -673,7 +679,6 @@ private:
             std::abs(lon - lon_) > dlon_threshold_ ||
             epoch_count_ > max_epochs_)
         {
-            log_debug("updating position");
             lat_ = lat; lon_ = lon;
             epoch_count_ = 0;
             // dlon threshold scale by cos(lat)
@@ -707,7 +712,7 @@ private:
     std::map<std::regex, NmeaParser::CallbackFn> handlers_;
     std::ofstream nmea_log_;
     std::string nmea_log_filename_;
-    std::ofstream *ubxfile_;
+    std::ofstream *logfile_;
 
     int gga_interval_;
     int distance_;
@@ -730,8 +735,8 @@ void handle_sigint(int) { g_stop = 1; }
 int main(void) {
     signal(SIGINT, handle_sigint);
 
-    //std::string user = ;
-    //std::string pass = :
+    std::string user = "R69JGq91vrh0";
+    std::string pass = "Y4^8yRcwdK";
     std::string server = DEFAULT_NTRIP_SERVER;
     int port = DEFAULT_NTRIP_PORT;
     std::string mountpoint = "";
@@ -751,7 +756,7 @@ int main(void) {
     }
     log_info("Opened serial port " + portname);
 
-    // open ubx file
+    // open log file
     std::ofstream logfile;
     std::ofstream *logptr = nullptr;
     if (!logfilename.empty()) {

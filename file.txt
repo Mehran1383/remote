@@ -1,0 +1,10 @@
+In file included from /usr/include/c++/11/functional:49,
+                 from /usr/include/c++/11/pstl/glue_algorithm_defs.h:13,
+                 from /usr/include/c++/11/algorithm:74,
+                 from /home/mehran/Desktop/work/panto/remote/pointperfect_ntrip_client.cpp:20:
+/usr/include/c++/11/bits/stl_function.h: In instantiation of ‘constexpr bool std::less<_Tp>::operator()(const _Tp&, const _Tp&) const [with _Tp = std::__cxx11::basic_regex<char>]’:
+/usr/include/c++/11/bits/stl_map.h:519:32:   required from ‘std::map<_Key, _Tp, _Compare, _Alloc>::mapped_type& std::map<_Key, _Tp, _Compare, _Alloc>::operator[](std::map<_Key, _Tp, _Compare, _Alloc>::key_type&&) [with _Key = std::__cxx11::basic_regex<char>; _Tp = std::function<void(const std::__cxx11::basic_string<char>&)>; _Compare = std::less<std::__cxx11::basic_regex<char> >; _Alloc = std::allocator<std::pair<const std::__cxx11::basic_regex<char>, std::function<void(const std::__cxx11::basic_string<char>&)> > >; std::map<_Key, _Tp, _Compare, _Alloc>::mapped_type = std::function<void(const std::__cxx11::basic_string<char>&)>; std::map<_Key, _Tp, _Compare, _Alloc>::key_type = std::__cxx11::basic_regex<char>]’
+/home/mehran/Desktop/work/panto/remote/pointperfect_ntrip_client.cpp:540:47:   required from here
+/usr/include/c++/11/bits/stl_function.h:400:20: error: no match for ‘operator<’ (operand types are ‘const std::__cxx11::basic_regex<char>’ and ‘const std::__cxx11::basic_regex<char>’)
+  400 |       { return __x < __y; }
+      | 
