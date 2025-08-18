@@ -27,7 +27,6 @@
 #include <functional>
 #include <iomanip>
 #include <iostream>
-#include <map>
 #include <mutex>
 #include <regex>
 #include <sstream>
@@ -373,7 +372,7 @@ private:
 class NmeaParser {
 public:
     using CallbackFn = std::function<void(const std::string&)>;
-    NmeaParser(const std::map<std::regex, CallbackFn> &cbs) : callbacks_(cbs), buffering(false) {}
+    NmeaParser(const std::vector<std::pair<std::regex, CallbackFn>> &cbs) : callbacks_(cbs), buffering(false) {}
 
     void parse(const std::vector<uint8_t> &data) 
     {
@@ -423,7 +422,7 @@ public:
     }
 
 private:
-    std::map<std::regex, CallbackFn> callbacks_;
+    std::vector<std::pair<std::regex, CallbackFn>> callbacks_;
     std::vector<char> buffer;
     bool buffering;
 };
@@ -537,8 +536,10 @@ public:
             stats_interval_ = 0;
         }
         // prepare NMEA parser handlers
-        handlers_[std::regex("^\\$G[A-Z]GGA,")] = [this](const std::string &s){ handle_nmea_gga(s); };
-        handlers_[std::regex("^\\$G[A-Z]RMC,")] = [this](const std::string &s){ handle_nmea_rmc(s); };
+        std::vector<std::pair<std::regex, NmeaParser::CallbackFn>> handlers_ = {
+            { std::regex("^\\$G[A-Z]GGA,"), [this](const std::string &s){ handle_nmea_rmc(s); }},
+            { std::regex("^\\$G[A-Z]RMC,"), [this](const std::string &s){ handle_nmea_rmc(s); }}
+        };
         parser_ = std::make_unique<NmeaParser>(handlers_);
 
         // open NMEA log
@@ -709,7 +710,6 @@ private:
     std::string mountpoint_;
     std::vector<MountPointInfo> mountpoints_;
     std::unique_ptr<NmeaParser> parser_;
-    std::map<std::regex, NmeaParser::CallbackFn> handlers_;
     std::ofstream nmea_log_;
     std::string nmea_log_filename_;
     std::ofstream *logfile_;
