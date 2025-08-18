@@ -1,11 +1,3 @@
-// pointperfect_ntrip_client.cpp
-// Port of u-blox PointPerfect NTRIP client (Python -> C++)
-// Plain TCP only (no TLS).
-//
-// Build with CMake (provided).
-//
-// NOTE: This is written for POSIX systems (Linux). Serial port uses termios.
-
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -44,52 +36,51 @@
 
 using namespace std::chrono_literals;
 
-// ---------- Config constants ----------
 static constexpr int SOCKET_RECONNECT_DELAY = 10;    // seconds
 static constexpr int SERVER_RECONNECT_DELAY = 60;    // seconds
 static constexpr int SOCKET_TIMEOUT = 5;             // seconds
 static constexpr int SOCKET_MAX_RECV_TIMEOUTS = 12;  // count
 static constexpr const char* DEFAULT_NTRIP_SERVER = "ppntrip.services.u-blox.com";
 static constexpr int DEFAULT_NTRIP_PORT = 2101;
-static constexpr int DEFAULT_NTRIP_TLS_PORT = 2102; // not used (no TLS)
+static constexpr int MOUNTPOINT_INFO_SIZE = 11;
 
-// qualities & stats
 static const std::vector<std::string> QUALITIES = {
     "NOFIX","GNSS","DGNSS","PPS","FIXED","FLOAT","DR","MAN","SIM"
 };
 static const int STATS_LEVEL = 100;
 
-// ---------- Utilities ----------
-std::string now_timestamp() {
+std::string now_timestamp() 
+{
     time_t t = time(nullptr);
     char buf[64];
     strftime(buf, sizeof(buf), "%Y%m%d_%H%M%S", localtime(&t));
     return std::string(buf);
 }
 
-std::string base64_encode(const std::string &in) {
+std::string base64_encode(const std::string &in) 
+{
     static const char *b64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     std::string out;
-    int val=0, valb=-6;
+    int val = 0, valb = -6;
     for (unsigned char c : in) {
-        val = (val<<8) + c;
+        val = (val << 8) + c;
         valb += 8;
-        while (valb>=0) {
-            out.push_back(b64[(val>>valb)&0x3F]);
+        while (valb >= 0) {
+            out.push_back(b64[(val >> valb) & 0x3F]);
             valb -= 6;
         }
     }
-    if (valb>-6) out.push_back(b64[((val<<8)>>(valb+8))&0x3F]);
-    while (out.size()%4) out.push_back('=');
+    if (valb > -6) 
+        out.push_back(b64[((val << 8) >> (valb + 8)) & 0x3F]);
+    while (out.size() % 4)
+        out.push_back('=');
     return out;
 }
 
 void log_info(const std::string &s) { std::cout << "INFO: " << s << std::endl; }
-void log_debug(const std::string &s) { std::cerr << "DEBUG: " << s << std::endl; }
 void log_error(const std::string &s) { std::cerr << "ERROR: " << s << std::endl; }
 void log_warning(const std::string &s) { std::cerr << "WARN: " << s << std::endl; }
 
-// ---------- MountPointInfo ----------
 struct MountPointInfo {
     std::string name;
     std::string identifier;
@@ -103,7 +94,6 @@ struct MountPointInfo {
     double lon;
 };
 
-// ---------- NtripClient (plain TCP only) ----------
 class NtripClient {
 public:
     NtripClient(const std::string &host, int port, const std::string &user, const std::string &pw)
@@ -112,31 +102,41 @@ public:
 
     ~NtripClient() { stop_stream(); }
 
-    std::vector<MountPointInfo> get_mountpoints() {
-        int s = open_socket();
-        if (s < 0) return {};
+    std::vector<MountPointInfo> get_mountpoints() 
+    {
+        int fd = open_socket();
+        if (fd < 0) 
+            return {};
+
         std::string req = make_request("");
-        ssize_t sent = send(s, req.c_str(), req.size(), 0);
-        (void)sent;
+        ssize_t sent = send(fd, req.c_str(), req.size(), 0);
+        if (sent < 0)
+            return {};
+
         std::string data;
         char buf[1024];
         ssize_t r;
-        // read until EOF
-        while ((r = recv(s, buf, sizeof(buf), 0)) > 0) {
+        
+        while ((r = recv(fd, buf, sizeof(buf), 0)) > 0) {
             data.append(buf, buf + r);
         }
-        close(s);
+        close(fd);
+
         std::vector<MountPointInfo> mounts;
         std::istringstream iss(data);
         std::string line;
+
         while (std::getline(iss, line)) {
-            if (line.rfind("STR;", 0) == 0) {
-                // CSV semi-colon separated
+            if (line.rfind("STR;", 0) == 0) { // mountpoint stream
+                
                 std::vector<std::string> cols;
                 std::istringstream ls(line);
                 std::string token;
-                while (std::getline(ls, token, ';')) cols.push_back(token);
-                if (cols.size() >= 11) {
+
+                while (std::getline(ls, token, ';')) 
+                    cols.push_back(token);
+
+                if (cols.size() >= MOUNTPOINT_INFO_SIZE) {
                     MountPointInfo mp;
                     mp.name = cols[1];
                     mp.identifier = cols[2];
@@ -150,8 +150,6 @@ public:
                     mp.lon = std::stod(cols[10]);
                     mounts.push_back(mp);
                 }
-            } else if (line.rfind("CAS;", 0) == 0) {
-                // ignore for now
             }
         }
         return mounts;
@@ -168,17 +166,25 @@ public:
         worker_ = std::thread(&NtripClient::stream_thread, this);
     }
 
-    void stop_stream() {
+    void stop_stream(void) 
+    {
         streaming_ = false;
-        if (worker_.joinable()) worker_.join();
+        if (worker_.joinable()) 
+            worker_.join();
         std::lock_guard<std::mutex> lk(sock_mtx_);
-        if (sock_fd_ >= 0) { close(sock_fd_); sock_fd_ = -1; }
+        if (sock_fd_ >= 0) { 
+            close(sock_fd_); 
+            sock_fd_ = -1; 
+        }
     }
 
     // send GGA line (with CRLF) to the server's socket if available
-    bool send_gga(const std::string &gga) {
+    bool send_gga(const std::string &gga) 
+    {
         std::lock_guard<std::mutex> lk(sock_mtx_);
-        if (sock_fd_ < 0) return false;
+        if (sock_fd_ < 0) 
+            return false;
+
         ssize_t r = send(sock_fd_, gga.c_str(), gga.size(), 0);
         if (r < 0) {
             log_warning("Error sending GGA: " + std::string(strerror(errno)));
@@ -188,19 +194,21 @@ public:
     }
 
 private:
-    std::string make_request(const std::string &mount) {
+    std::string make_request(const std::string &mount) 
+    {
         std::string auth = base64_encode(user_ + ":" + pass_);
         std::ostringstream req;
         req << "GET /" << mount << " HTTP/1.1\r\n";
         req << "Host: " << host_ << ":" << port_ << "\r\n";
-        req << "User-Agent: NTRIP C++ Client\r\n";
+        req << "User-Agent: NTRIP Client\r\n";
         req << "Accept: */*\r\n";
         req << "Authorization: Basic " << auth << "\r\n";
         req << "Connection: close\r\n\r\n";
         return req.str();
     }
 
-    int open_socket() {
+    int open_socket(void) 
+    {
         struct addrinfo hints{}, *res = nullptr;
         hints.ai_family = AF_UNSPEC;
         hints.ai_socktype = SOCK_STREAM;
@@ -209,49 +217,59 @@ private:
             log_error(std::string("getaddrinfo: ") + gai_strerror(rc));
             return -1;
         }
-        int s = -1;
+
+        int fd = -1;
         for (struct addrinfo *p = res; p; p = p->ai_next) {
-            s = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
-            if (s < 0) continue;
+            fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+            if (fd < 0) 
+                continue;
             // set timeout for connect
-            struct timeval tv{SOCKET_TIMEOUT,0};
-            setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-            if (connect(s, p->ai_addr, p->ai_addrlen) == 0) {
+            struct timeval tv { SOCKET_TIMEOUT, 0 };
+            setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+            if (connect(fd, p->ai_addr, p->ai_addrlen) == 0) {
                 freeaddrinfo(res);
-                return s;
+                return fd;
             }
-            close(s);
-            s = -1;
+            close(fd);
+            fd = -1;
         }
         freeaddrinfo(res);
         log_error("Unable to connect to server");
         return -1;
     }
 
-    void stream_thread() {
+    void stream_thread()
+    {
         int delay = 0;
         while (streaming_) {
-            int s = open_socket();
-            if (s < 0) {
+            int fd = open_socket();
+            if (fd < 0) {
                 delay = SOCKET_RECONNECT_DELAY;
                 log_warning("Error connecting; retrying in " + std::to_string(delay) + "s");
-                if (!wait_or_stop(delay)) break;
+                if (!wait_or_stop(delay)) 
+                    break;
                 continue;
             }
 
-            // send request for mountpoint
             std::string req = make_request(mountpoint_);
-            ssize_t sent = send(s, req.c_str(), req.size(), 0);
-            (void)sent;
+            ssize_t sent = send(fd, req.c_str(), req.size(), 0);
+            if (sent < 0) {
+                close(fd);
+                delay = SERVER_RECONNECT_DELAY;
+                if (!wait_or_stop(delay)) 
+                    break;
+                continue;
+            }
 
             // read initial response (headers)
             std::string header_data;
             char buf[2048];
-            ssize_t r = recv(s, buf, sizeof(buf), 0);
+            ssize_t r = recv(fd, buf, sizeof(buf), 0);
             if (r <= 0) {
-                close(s);
+                close(fd);
                 delay = SERVER_RECONNECT_DELAY;
-                if (!wait_or_stop(delay)) break;
+                if (!wait_or_stop(delay)) 
+                    break;
                 continue;
             }
             header_data.append(buf, buf + r);
@@ -268,39 +286,43 @@ private:
                 std::string http, code;
                 st >> http >> code;
                 if (code != "200") {
-                    log_error("HTTP Error: " + status_line + " ; retrying in " + std::to_string(SERVER_RECONNECT_DELAY) + "s");
-                    close(s);
+                    log_error("HTTP Error: " + status_line + " ; retrying in " + 
+                              std::to_string(SERVER_RECONNECT_DELAY) + "s");
+                    close(fd);
                     delay = SERVER_RECONNECT_DELAY;
-                    if (!wait_or_stop(delay)) break;
+                    if (!wait_or_stop(delay)) 
+                        break;
                     continue;
                 }
                 // remainder after header end is initial payload
-                std::string payload = header_data.substr(hdr_end+4);
+                std::string payload = header_data.substr(hdr_end + 4);
                 initial_data.assign(payload.begin(), payload.end());
             } else {
-                // no headers end found yet - treat whole chunk as initial payload (best effort)
+                // no headers end found yet - treat whole chunk as initial payload
                 initial_data.assign(header_data.begin(), header_data.end());
             }
 
             {
                 // make socket available for GGA sends
                 std::lock_guard<std::mutex> lk(sock_mtx_);
-                sock_fd_ = s;
+                sock_fd_ = fd;
             }
 
-            if (!initial_data.empty() && callback_) callback_(initial_data);
+            if (!initial_data.empty() && callback_) 
+                callback_(initial_data);
 
             int timeouts = 0;
             // set recv timeout on socket
-            struct timeval tv{SOCKET_TIMEOUT, 0};
-            setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+            struct timeval tv { SOCKET_TIMEOUT, 0 };
+            setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
             while (streaming_ && timeouts < SOCKET_MAX_RECV_TIMEOUTS) {
-                ssize_t n = recv(s, buf, sizeof(buf), 0);
+                ssize_t n = recv(fd, buf, sizeof(buf), 0);
                 if (n > 0) {
                     timeouts = 0;
                     std::vector<uint8_t> bb(buf, buf + n);
-                    if (callback_) callback_(bb);
+                    if (callback_) 
+                        callback_(bb);
                 } else if (n == 0) {
                     log_warning("Connection closed by server, reconnecting");
                     delay = SERVER_RECONNECT_DELAY;
@@ -321,14 +343,18 @@ private:
                 std::lock_guard<std::mutex> lk(sock_mtx_);
                 if (sock_fd_ >= 0) { close(sock_fd_); sock_fd_ = -1; }
             }
-            close(s);
-            if (!wait_or_stop(delay)) break;
-        } // while streaming
+            close(fd);
+            if (!wait_or_stop(delay)) 
+                break;
+        } 
     }
 
-    bool wait_or_stop(int seconds) {
-        if (seconds <= 0) return true;
-        for (int i=0; i<seconds && streaming_; ++i) std::this_thread::sleep_for(1s);
+    bool wait_or_stop(int seconds) 
+    {
+        if (seconds <= 0) 
+            return true;
+        for (int i = 0; i < seconds && streaming_; ++i) 
+            std::this_thread::sleep_for(1s);
         return streaming_;
     }
 
@@ -343,13 +369,13 @@ private:
     std::string mountpoint_;
 };
 
-// ---------- NmeaParser ----------
 class NmeaParser {
 public:
     using CallbackFn = std::function<void(const std::string&)>;
     NmeaParser(const std::map<std::regex, CallbackFn> &cbs) : callbacks_(cbs), buffering(false) {}
 
-    void parse(const std::vector<uint8_t> &data) {
+    void parse(const std::vector<uint8_t> &data) 
+    {
         for (uint8_t b : data) {
             if (b == '$') {
                 buffer.clear();
@@ -361,17 +387,20 @@ public:
                      b==',' || b=='.' || b=='-' || b=='*') {
                     buffer.push_back(b);
                 } else if (b == 0x0D) { // CR
-                    if (buffer.size() > 3 && buffer[buffer.size()-3] == '*') {
+                    if (buffer.size() > 3 && buffer[buffer.size() - 3] == '*') {
                         // parse checksum
                         std::string chkstr;
-                        chkstr.push_back((char)buffer[buffer.size()-2]);
-                        chkstr.push_back((char)buffer[buffer.size()-1]);
+                        chkstr.push_back((char)buffer[buffer.size() - 2]);
+                        chkstr.push_back((char)buffer[buffer.size() - 1]);
                         int chksum_received = -1;
                         try {
                             chksum_received = std::stoi(chkstr, nullptr, 16);
                         } catch (...) { chksum_received = -1; }
+
                         int chksum = 0;
-                        for (size_t i=1; i+3 < buffer.size(); ++i) chksum ^= buffer[i];
+                        for (size_t i = 1; i + 3 < buffer.size(); ++i) 
+                            chksum ^= buffer[i];
+
                         if (chksum == chksum_received) {
                             std::string s(buffer.begin(), buffer.end());
                             // try callbacks
@@ -388,8 +417,8 @@ public:
                 } else {
                     buffering = false;
                 }
-            } // if buffering
-        } // for
+            } 
+        } 
     }
 
 private:
@@ -398,13 +427,13 @@ private:
     bool buffering;
 };
 
-// ---------- Serial (POSIX) ----------
 class PosixSerial {
 public:
     PosixSerial(): fd_(-1) {}
     ~PosixSerial(){ close_port(); }
 
-    bool open_port(const std::string &device, int baud = 115200) {
+    bool open_port(const std::string &device, int baud = 115200) 
+    {
         fd_ = open(device.c_str(), O_RDWR | O_NOCTTY | O_NONBLOCK);
         if (fd_ < 0) {
             log_error("Failed to open serial port: " + device + " : " + strerror(errno));
@@ -414,7 +443,9 @@ public:
         struct termios tio{};
         if (tcgetattr(fd_, &tio) != 0) {
             log_error("tcgetattr failed: " + std::string(strerror(errno)));
-            close(fd_); fd_ = -1; return false;
+            close(fd_); 
+            fd_ = -1; 
+            return false;
         }
         cfmakeraw(&tio);
         // input flags: no parity, disable flow control
@@ -425,17 +456,7 @@ public:
         tio.c_cflag &= ~PARENB;
 
         speed_t sp = B115200;
-        switch (baud) {
-            case 4800: sp = B4800; break;
-            case 9600: sp = B9600; break;
-            case 19200: sp = B19200; break;
-            case 38400: sp = B38400; break;
-            case 57600: sp = B57600; break;
-            case 115200: sp = B115200; break;
-            default:
-                log_warning("Unsupported baud provided, defaulting to 115200");
-                sp = B115200;
-        }
+
         cfsetispeed(&tio, sp);
         cfsetospeed(&tio, sp);
         tio.c_cc[VMIN] = 0;
@@ -443,35 +464,50 @@ public:
         tcflush(fd_, TCIFLUSH);
         if (tcsetattr(fd_, TCSANOW, &tio) != 0) {
             log_error("tcsetattr failed: " + std::string(strerror(errno)));
-            close(fd_); fd_ = -1; return false;
+            close(fd_); 
+            fd_ = -1; 
+            return false;
         }
         return true;
     }
 
-    void close_port() {
-        if (fd_ >= 0) close(fd_);
+    void close_port() 
+    {
+        if (fd_ >= 0) 
+            close(fd_);
         fd_ = -1;
     }
 
     // read up to bufsize into vector, return bytes read
-    ssize_t read_some(std::vector<uint8_t> &buf, size_t maxBytes) {
-        if (fd_ < 0) return -1;
+    ssize_t read_some(std::vector<uint8_t> &buf, size_t maxBytes) 
+    {
+        if (fd_ < 0) 
+            return -1;
+
         buf.resize(maxBytes);
         ssize_t r = read(fd_, buf.data(), (ssize_t)maxBytes);
-        if (r > 0) buf.resize(r);
-        else buf.clear();
+        if (r > 0) 
+            buf.resize(r);
+        else 
+            buf.clear();
+
         return r;
     }
 
-    // write bytes
-    ssize_t write_bytes(const std::vector<uint8_t> &data) {
-        if (fd_ < 0) return -1;
+    ssize_t write_bytes(const std::vector<uint8_t> &data) 
+    {
+        if (fd_ < 0) 
+            return -1;
+
         return write(fd_, data.data(), data.size());
     }
 
-    // write raw string (for convenience)
-    ssize_t write_string(const std::string &s) {
-        if (fd_ < 0) return -1;
+    // write raw string 
+    ssize_t write_string(const std::string &s) 
+    {
+        if (fd_ < 0) 
+            return -1;
+
         return write(fd_, s.c_str(), s.size());
     }
 
@@ -479,19 +515,19 @@ private:
     int fd_;
 };
 
-// ---------- PointPerfectClient ----------
 class PointPerfectClient {
 public:
     PointPerfectClient(PosixSerial &serial, NtripClient &ntrip, const std::string &mountpoint,
                        int gga_interval, int distance, double epochs, std::ofstream *ubxfile, int stats_interval)
         : serial_(serial), ntrip_(ntrip), mountpoint_(mountpoint), gga_interval_(gga_interval),
-          distance_(distance), max_epochs_(epochs), ubxfile_(ubxfile)
+          distance_(distance), max_epochs_(epochs), logfile_(logfile)
     {
         lat_ = 0.0; lon_ = 0.0;
         epoch_count_ = 0;
         dlat_threshold_ = distance_ * 360.0 / (6371000.0 * 2.0 * M_PI);
         dlon_threshold_ = 0.0;
         lastgga_ = 0;
+
         if (stats_interval > 0) {
             stats_epochs_.assign(QUALITIES.size(), 0);
             stats_total_ = 0;
@@ -536,7 +572,8 @@ public:
 
     ~PointPerfectClient() {
         ntrip_.stop_stream();
-        if (nmea_log_.is_open()) nmea_log_.close();
+        if (nmea_log_.is_open()) 
+            nmea_log_.close();
     }
 
     void loop_forever() {
@@ -687,127 +724,26 @@ private:
     int stats_interval_ = 0;
 };
 
-// ---------- Command-line parsing and main ----------
 static volatile std::sig_atomic_t g_stop = 0;
 void handle_sigint(int) { g_stop = 1; }
 
-void usage() {
-    std::cout << "Usage: pointperfect_ntrip_client -P <serialport[@baud]> -u <user> -p <password> [options]\n";
-    std::cout << "Options:\n";
-    std::cout << "  -P, --port      Serial port[@baud] (required)\n";
-    std::cout << "  -u, --user      NTRIP user (required)\n";
-    std::cout << "  -p, --password  NTRIP password (required)\n";
-    std::cout << "  -s, --server    NTRIP server:port (default: " << DEFAULT_NTRIP_SERVER << ":" << DEFAULT_NTRIP_PORT << ")\n";
-    std::cout << "  -m, --mountpoint [name]  Mountpoint (omit to list available)\n";
-    std::cout << "  -g, --ggainterval <sec>  GGA interval seconds (default 0)\n";
-    std::cout << "  --distance <m>  distance threshold default 50000\n";
-    std::cout << "  --epochs <n>    maximum epochs between recalculation (default inf)\n";
-    std::cout << "  --ubx [file]    write UBX output to file\n";
-    std::cout << "  --log [file]    log to text file\n";
-    std::cout << "  --stats [N]     print stats every N epochs (default off, 5 if no arg)\n";
-    std::cout << "  --trace LEVEL   TRACE level: INFO, DEBUG (default INFO)\n";
-}
-
-int main(int argc, char **argv) {
+int main(void) {
     signal(SIGINT, handle_sigint);
 
-    std::string portarg;
-    std::string user, pass;
+    //std::string user = ;
+    //std::string pass = :
     std::string server = DEFAULT_NTRIP_SERVER;
     int port = DEFAULT_NTRIP_PORT;
-    std::string mountpoint = ""; // empty means list
-    int ggainterval = 0;
-    int distance = 50000;
+    std::string mountpoint = "";
+    int ggainterval = 10;
+    int distance = 10000;
     double epochs = 1e300;
-    std::string ubxfilename;
-    std::string logfile;
+    std::string logfilename = std::string("pointperfect_log_") + now_timestamp() + ".nmea";
     int stats = 0;
-    std::string trace = "INFO";
 
-    const struct option longopts[] = {
-        {"port", required_argument, nullptr, 'P'},
-        {"user", required_argument, nullptr, 'u'},
-        {"password", required_argument, nullptr, 'p'},
-        {"server", required_argument, nullptr, 's'},
-        {"mountpoint", optional_argument, nullptr, 'm'},
-        {"ggainterval", required_argument, nullptr, 'g'},
-        {"distance", required_argument, nullptr, 1000},
-        {"epochs", required_argument, nullptr, 1001},
-        {"ubx", optional_argument, nullptr, 1002},
-        {"log", optional_argument, nullptr, 1003},
-        {"stats", optional_argument, nullptr, 1004},
-        {"trace", required_argument, nullptr, 1005},
-        {nullptr,0,nullptr,0}
-    };
-    int opt;
-    int longindex = 0;
-
-    while ((opt = getopt_long(argc, argv, "P:u:p:s:m::g:", longopts, &longindex)) != -1) {
-        switch (opt) {
-            case 'P': portarg = optarg; break;
-            case 'u': user = optarg; break;
-            case 'p': pass = optarg; break;
-            case 's': {
-                std::string s = optarg;
-                auto pos = s.find(':');
-                if (pos != std::string::npos) {
-                    server = s.substr(0,pos);
-                    port = std::stoi(s.substr(pos+1));
-                } else {
-                    server = s;
-                }
-                break;
-            }
-            case 'm':
-                if (optarg) mountpoint = optarg;
-                else mountpoint = ""; // empty string means list
-                break;
-            case 'g': ggainterval = atoi(optarg); break;
-            case 1000: distance = atoi(optarg); break;
-            case 1001: epochs = atof(optarg); break;
-            case 1002:
-                if (optarg) ubxfilename = optarg;
-                else ubxfilename = std::string("pointperfect_log_") + now_timestamp() + ".ubx";
-                break;
-            case 1003:
-                if (optarg) logfile = optarg;
-                else logfile = std::string("pointperfect_log_") + now_timestamp() + ".txt";
-                break;
-            case 1004:
-                if (optarg) stats = atoi(optarg);
-                else stats = 5;
-                break;
-            case 1005:
-                trace = optarg;
-                break;
-            default:
-                usage();
-                return 1;
-        }
-    }
-
-    if (portarg.empty() || user.empty() || pass.empty()) {
-        usage();
-        return 1;
-    }
-
-    // setup logging to file if requested
-    if (!logfile.empty()) {
-        // naive: redirect cerr to file as well
-        freopen(logfile.c_str(), "a", stderr);
-    }
-    log_info("Starting pointperfect_ntrip_client");
-
-    // parse portarg
-    std::string portname;
+    std::string portname = "/dev/ttyACM0";
     int baud = 115200;
-    auto pos = portarg.find('@');
-    if (pos != std::string::npos) {
-        portname = portarg.substr(0,pos);
-        baud = atoi(portarg.substr(pos+1).c_str());
-    } else portname = portarg;
 
-    // open serial
     PosixSerial serial;
     if (!serial.open_port(portname, baud)) {
         log_error("Unable to open serial port. Exiting.");
@@ -815,26 +751,26 @@ int main(int argc, char **argv) {
     }
     log_info("Opened serial port " + portname);
 
-    // open ubx file if requested
-    std::ofstream ubxfile;
-    std::ofstream *ubxptr = nullptr;
-    if (!ubxfilename.empty()) {
-        ubxfile.open(ubxfilename, std::ios::binary);
-        if (!ubxfile.is_open()) log_warning("Unable to open ubx file for writing");
-        else { ubxptr = &ubxfile; log_info("Writing UBX to " + ubxfilename); }
+    // open ubx file
+    std::ofstream logfile;
+    std::ofstream *logptr = nullptr;
+    if (!logfilename.empty()) {
+        logfile.open(logfilename, std::ios::binary);
+        if (!logfile.is_open()) {
+            log_warning("Unable to open log file for writing");
+        } else { 
+            logptr = &logfile; 
+            log_info("Writing NMEA to " + logfilename); 
+        }
     }
 
     NtripClient ntrip(server, port, user, pass);
 
     // create client
-    PointPerfectClient client(serial, ntrip, mountpoint, ggainterval, distance, epochs, ubxptr, stats);
-
-    // start stream if mountpoint provided was empty? handled in constructor
-
-    // main loop (blocking)
+    PointPerfectClient client(serial, ntrip, mountpoint, ggainterval, distance, epochs, logptr, stats);
     client.loop_forever();
 
-    if (ubxfile.is_open()) ubxfile.close();
+    if (logfile.is_open()) logfile.close();
     serial.close_port();
 
     return 0;
