@@ -1,0 +1,9 @@
+F:/work/PANTOlink/SerialToUdp/build/Qt_6_8_2_MinGW_64_bit-Debug/CMakeFiles/SerialToUdpApp.dir
+F:/work/PANTOlink/SerialToUdp/build/Qt_6_8_2_MinGW_64_bit-Debug/CMakeFiles/edit_cache.dir
+F:/work/PANTOlink/SerialToUdp/build/Qt_6_8_2_MinGW_64_bit-Debug/CMakeFiles/rebuild_cache.dir
+F:/work/PANTOlink/SerialToUdp/build/Qt_6_8_2_MinGW_64_bit-Debug/CMakeFiles/list_install_components.dir
+F:/work/PANTOlink/SerialToUdp/build/Qt_6_8_2_MinGW_64_bit-Debug/CMakeFiles/install.dir
+F:/work/PANTOlink/SerialToUdp/build/Qt_6_8_2_MinGW_64_bit-Debug/CMakeFiles/install/local.dir
+F:/work/PANTOlink/SerialToUdp/build/Qt_6_8_2_MinGW_64_bit-Debug/CMakeFiles/install/strip.dir
+F:/work/PANTOlink/SerialToUdp/build/Qt_6_8_2_MinGW_64_bit-Debug/CMakeFiles/SerialToUdpApp_autogen_timestamp_deps.dir
+F:/work/PANTOlink/SerialToUdp/build/Qt_6_8_2_MinGW_64_bit-Debug/CMakeFiles/SerialToUdpApp_autogen.dir

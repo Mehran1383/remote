@@ -1,0 +1,16 @@
+[Unit]
+Description=Serial UDP Middleware Service
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/home/nvidia/PANTOlink/build/SerialToUdp/SerialToUdpApp
+Restart=always
+RestartSec=3
+User=nvidia
+WorkingDirectory=/home/nvidia/PANTOlink/build/SerialToUdp
+StandardOutput=append:/var/log/serial-udp-middleware.log
+StandardError=append:/var/log/serial-udp-middleware_error.log
+
+[Install]
+WantedBy=multi-user.target

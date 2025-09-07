@@ -1,0 +1,79 @@
+{
+	"configurations" : 
+	[
+		{
+			"directories" : 
+			[
+				{
+					"build" : ".",
+					"hasInstallRule" : true,
+					"jsonFile" : "directory-.-Debug-44b7434fc0335c6aa5a8.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.16"
+					},
+					"projectIndex" : 0,
+					"source" : ".",
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						2
+					]
+				}
+			],
+			"name" : "Debug",
+			"projects" : 
+			[
+				{
+					"directoryIndexes" : 
+					[
+						0
+					],
+					"name" : "SerialToUdpApp",
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						2
+					]
+				}
+			],
+			"targets" : 
+			[
+				{
+					"directoryIndex" : 0,
+					"id" : "SerialToUdpApp::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-SerialToUdpApp-Debug-77ae40f0d84ca360b8f8.json",
+					"name" : "SerialToUdpApp",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "SerialToUdpApp_autogen::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-SerialToUdpApp_autogen-Debug-d7a5131648e53e8b0290.json",
+					"name" : "SerialToUdpApp_autogen",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "SerialToUdpApp_autogen_timestamp_deps::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-SerialToUdpApp_autogen_timestamp_deps-Debug-b44d6dee247d05f5c435.json",
+					"name" : "SerialToUdpApp_autogen_timestamp_deps",
+					"projectIndex" : 0
+				}
+			]
+		}
+	],
+	"kind" : "codemodel",
+	"paths" : 
+	{
+		"build" : "F:/work/PANTOlink/SerialToUdp/build/Qt_6_8_2_MinGW_64_bit-Debug",
+		"source" : "F:/work/PANTOlink/SerialToUdp"
+	},
+	"version" : 
+	{
+		"major" : 2,
+		"minor" : 8
+	}
+}
