@@ -142,7 +142,11 @@ int main(int argc, char *argv[]) {
     receiverHandler->start();
     receiverThread->start();
 
-    GpsSerialHandler gpsHandler(nullptr, gpsPort);
+    QThread *gpsThread = new QThread();
+    GpsSerialHandler* gpsHandler = new GpsSerialHandler(nullptr, gpsPort);
+    gpsHandler->moveToThread(gpsThread);
+
+    gpsThread->start();
 
     return a.exec();
 }

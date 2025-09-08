@@ -216,7 +216,7 @@ signed int ReceiverSerialHandler::assemble_16bit(uint8_t Msb, uint8_t Lsb)
     D=(signed int)(Msb|Lsb<<8);
 
     //if(D<0){D=(65535-D)*(-1);}
-    D=Division(D,2140)*1000;
+    // D=Division(D,2140)*1000;
     return D ;
 }
 

@@ -22,6 +22,11 @@ NtripClient::NtripClient(QObject *parent)
     credentialsExist(false),
     delay(0)
 {
+    responseTimer.setParent(this);
+    reconnectTimer.setParent(this);
+    networkManager.setParent(this);
+    socket.setParent(this);
+
     reconnectTimer.setSingleShot(true);
     responseTimer.setSingleShot(true);
 
