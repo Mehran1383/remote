@@ -1,15 +1,13 @@
 #include <iostream>
-#include <vector>
-#include <cstring>
 #include <fcntl.h>
 #include <termios.h>
 #include <unistd.h>
-#include <stdint.h>
+#include <vector>
+#include <cstring>
 
 #define UBX_SYNC_CHAR1 0xB5
 #define UBX_SYNC_CHAR2 0x62
 
-// ===================== SERIAL PORT =====================
 int openSerialPort(const char* device) {
     int fd = open(device, O_RDWR | O_NOCTTY | O_NDELAY);
     if (fd == -1) {
@@ -33,7 +31,6 @@ int openSerialPort(const char* device) {
     return fd;
 }
 
-// ===================== UBX HELPERS =====================
 void calculateChecksum(const std::vector<uint8_t>& payload, uint8_t& ckA, uint8_t& ckB) {
     ckA = 0;
     ckB = 0;
@@ -46,7 +43,6 @@ void calculateChecksum(const std::vector<uint8_t>& payload, uint8_t& ckA, uint8_
 bool sendUBXMessage(int fd, uint8_t cls, uint8_t id, const std::vector<uint8_t>& payload) {
     uint16_t length = payload.size();
     std::vector<uint8_t> message;
-    message.reserve(8 + payload.size());
 
     message.push_back(UBX_SYNC_CHAR1);
     message.push_back(UBX_SYNC_CHAR2);
@@ -62,122 +58,73 @@ bool sendUBXMessage(int fd, uint8_t cls, uint8_t id, const std::vector<uint8_t>&
     message.push_back(ckB);
 
     ssize_t written = write(fd, message.data(), message.size());
-    return written == (ssize_t)message.size();
+    return written == static_cast<ssize_t>(message.size());
 }
 
-// ===================== CONFIG FUNCTIONS =====================
-// Enable Secondary Output (CFG-OUT-SECONDARY = 1)
-bool enableSecondaryOutput(int fd) {
-    std::vector<uint8_t> payload;
-    payload.push_back(0x00); // version
-    payload.push_back(0x00); // layer (0: RAM only)
-    payload.push_back(0x00); // reserved
-    payload.push_back(0x00); // reserved
+bool readUBXMonVer(int fd) {
+    const int HEADER_SIZE = 6;
+    const int RESPONSE_HEADER_LEN = 6;
+    const int MAX_PAYLOAD = 100;
 
-    // KeyID 0x20910227 (CFG-OUT-SECONDARY)
-    payload.push_back(0x27);
-    payload.push_back(0x02);
-    payload.push_back(0x91);
-    payload.push_back(0x20);
+    uint8_t buffer[HEADER_SIZE + MAX_PAYLOAD + 2]; // header + payload + checksum
+    int totalRead = 0;
 
-    // Value = 1
-    payload.push_back(0x01);
-    payload.push_back(0x00);
-    payload.push_back(0x00);
-    payload.push_back(0x00);
+    // Wait and read the UBX-MON-VER message (class=0x0A, id=0x04)
+    for (int attempts = 0; attempts < 1000; ++attempts) {
+        usleep(1000);
+        int r = read(fd, &buffer[totalRead], 1);
+        if (r > 0) {
+            totalRead += r;
 
-    return sendUBXMessage(fd, 0x06, 0x8A, payload);
-}
+            if (totalRead >= 6 &&
+                buffer[0] == UBX_SYNC_CHAR1 &&
+                buffer[1] == UBX_SYNC_CHAR2 &&
+                buffer[2] == 0x0A && buffer[3] == 0x04) {
+                uint16_t len = buffer[4] | (buffer[5] << 8);
 
-// Enable NAV-PVT output on USB (both primary & secondary will use this)
-bool enableNavPvtOnUSB(int fd) {
-    std::vector<uint8_t> payload;
-    payload.push_back(0x00); // version
-    payload.push_back(0x00); // layer (0: RAM only)
-    payload.push_back(0x00); // reserved
-    payload.push_back(0x00); // reserved
-
-    // KeyID 0x20910007 (CFG-MSGOUT-UBX_NAV_PVT_USB)
-    payload.push_back(0x07);
-    payload.push_back(0x00);
-    payload.push_back(0x91);
-    payload.push_back(0x20);
-
-    // Value = 1 (enable output every nav cycle)
-    payload.push_back(0x01);
-    payload.push_back(0x00);
-    payload.push_back(0x00);
-    payload.push_back(0x00);
-
-    return sendUBXMessage(fd, 0x06, 0x8A, payload);
-}
-
-// ===================== NAV-PVT PARSER =====================
-void parseNavPvt(const uint8_t* payload, bool secondary) {
-    int32_t lon = *(int32_t*)(payload + 24);
-    int32_t lat = *(int32_t*)(payload + 28);
-    int32_t height = *(int32_t*)(payload + 32);
-    uint8_t fixType = payload[20];
-    uint8_t flags = payload[21];
-
-    double lonDeg = lon / 1e7;
-    double latDeg = lat / 1e7;
-    double heightM = height / 1000.0;
-
-    std::cout << (secondary ? "[Secondary]" : "[Primary]  ")
-              << " FixType=" << (int)fixType
-              << " Lat=" << latDeg
-              << " Lon=" << lonDeg
-              << " Height=" << heightM << " m"
-              << " Flags=0x" << std::hex << (int)flags << std::dec
-              << std::endl;
-}
-
-// ===================== MAIN LOOP =====================
-int main() {
-    const char* port = "/dev/ttyACM0"; // Adjust if needed
-    int fd = openSerialPort(port);
-    if (fd < 0) return 1;
-
-    std::cout << "Enabling secondary output..." << std::endl;
-    if (!enableSecondaryOutput(fd))
-        std::cerr << "Failed to enable secondary output" << std::endl;
-
-    std::cout << "Enabling NAV-PVT output on USB..." << std::endl;
-    if (!enableNavPvtOnUSB(fd))
-        std::cerr << "Failed to enable NAV-PVT output" << std::endl;
-
-    std::cout << "Reading NAV-PVT messages..." << std::endl;
-
-    uint8_t buf[100];
-    int idx = 0;
-    uint8_t header[2] = {UBX_SYNC_CHAR1, UBX_SYNC_CHAR2};
-
-    while (true) {
-        uint8_t byte;
-        if (read(fd, &byte, 1) > 0) {
-            if (idx < 2) {
-                if (byte == header[idx]) idx++;
-                else idx = 0;
-            } else {
-                buf[idx - 2] = byte;
-                idx++;
-                if (idx >= 2 + 4) {
-                    uint8_t cls = buf[0];
-                    uint8_t id  = buf[1];
-                    uint16_t len = buf[2] | (buf[3] << 8);
-                    if (idx >= 2 + 4 + len + 2) {
-                        if (cls == 0x01 && id == 0x07) {
-                            // UBX-NAV-PVT message
-                            bool secondary = buf[21] & 0x20; // flags bit 5 = isSecondary
-                            parseNavPvt(buf + 4, secondary);
-                        }
-                        idx = 0;
-                    }
+                while (totalRead < 6 + len + 2) {
+                    r = read(fd, &buffer[totalRead], 1);
+                    if (r > 0) totalRead += r;
                 }
+
+                // Extract version strings
+                const uint8_t* payload = buffer + 6;
+
+                std::string swVersion(reinterpret_cast<const char*>(payload), 30);
+                std::string hwVersion(reinterpret_cast<const char*>(payload + 30), 30);
+
+                std::cout << "🟢 Software Version: " << swVersion.c_str() << std::endl;
+                std::cout << "🟢 Hardware Version: " << hwVersion.c_str() << std::endl;
+
+                // Optional extensions (up to N additional 30-byte strings)
+                int extCount = (len - 60) / 30;
+                for (int i = 0; i < extCount; ++i) {
+                    std::string ext(reinterpret_cast<const char*>(payload + 60 + i * 30), 30);
+                    std::cout << "🔧 Extension[" << i << "]: " << ext.c_str() << std::endl;
+                }
+
+                return true;
             }
         }
     }
+
+    std::cerr << "⚠️  UBX-MON-VER response not received." << std::endl;
+    return false;
+}
+
+int main() {
+    const char* port = "/dev/ttyACM0"; // Adjust this if needed
+    int fd = openSerialPort(port);
+    if (fd < 0) return 1;
+
+    std::cout << "📤 Sending UBX-MON-VER poll..." << std::endl;
+    if (!sendUBXMessage(fd, 0x0A, 0x04, {})) {
+        std::cerr << "Failed to send UBX-MON-VER." << std::endl;
+        return 1;
+    }
+
+    std::cout << "📥 Waiting for UBX-MON-VER response..." << std::endl;
+    readUBXMonVer(fd);
 
     close(fd);
     return 0;
